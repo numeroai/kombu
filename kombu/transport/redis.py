@@ -240,6 +240,8 @@ class MultiChannelPoller(object):
         self._fd_to_chan = {}
         # channel -> socket map
         self._chan_to_sock = {}
+        # socket -> file descriptor map
+        self._sock_to_fd = {}
         # poll implementation (epoll/kqueue/select)
         self.poller = poll()
         # one-shot callbacks called after reading from socket.
@@ -253,6 +255,7 @@ class MultiChannelPoller(object):
                 pass
         self._channels.clear()
         self._fd_to_chan.clear()
+        self._sock_to_fd.clear()
         self._chan_to_sock.clear()
 
     def add(self, channel):
@@ -263,8 +266,8 @@ class MultiChannelPoller(object):
 
     def _on_connection_disconnect(self, connection):
         try:
-            self.poller.unregister(connection._sock)
-        except (AttributeError, TypeError):
+            self._unregister_sock(connection._sock)
+        except (AttributeError, TypeError, KeyError):
             pass
 
     def _register(self, channel, client, type):
@@ -273,12 +276,25 @@ class MultiChannelPoller(object):
         if client.connection._sock is None:   # not connected yet.
             client.connection.connect()
         sock = client.connection._sock
-        self._fd_to_chan[sock.fileno()] = (channel, type)
+        fileno = sock.fileno()
+        self._sock_to_fd[sock] = fileno
+        self._fd_to_chan[fileno] = (channel, type)
         self._chan_to_sock[(channel, client, type)] = sock
         self.poller.register(sock, self.eventflags)
 
+    def _unregister_sock(self, sock):
+        try:
+            fd = self._sock_to_fd.pop(sock)
+            del self._fd_to_chan[fd]
+        finally:
+            self.poller.unregister(sock)
+
     def _unregister(self, channel, client, type):
-        self.poller.unregister(self._chan_to_sock[(channel, client, type)])
+        try:
+            self._unregister_sock(
+                self._chan_to_sock[(channel, client, type)])
+        except (AttributeError, TypeError, KeyError):
+            pass
 
     def _register_BRPOP(self, channel):
         """enable BRPOP mode for channel."""
@@ -326,7 +342,10 @@ class MultiChannelPoller(object):
         try:
             chan, type = self._fd_to_chan[fileno]
         except KeyError:
-            return
+            # This was caused by a disconnect for another event wiping out all
+            # other connections. raise Empty so event loop can try again on the
+            # next poll.
+            raise Empty()
         if chan.qos.can_consume():
             return chan.handlers[type]()
 
@@ -656,7 +675,10 @@ class Channel(virtual.Channel):
             except self.connection_errors:
                 # if there's a ConnectionError, disconnect so the next
                 # iteration will reconnect automatically.
-                self.client.connection.disconnect()
+                try:
+                    self.client.connection.disconnect()
+                except self.connection_errors:
+                    pass
                 raise Empty()
             if dest__item:
                 dest, item = dest__item
