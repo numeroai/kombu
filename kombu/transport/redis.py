@@ -246,6 +246,10 @@ class MultiChannelPoller(object):
         # channel -> socket map
         self._chan_to_sock = {}
         # socket -> file descriptor map
+        # we need to keep track of socket to file descriptor mapping in order
+        # to remove dead file descriptors from the `_fd_to_chan` map. We can't
+        # just ask the socket what its file descriptor was, because it is most
+        # likely closed.
         self._sock_to_fd = {}
         # poll implementation (epoll/kqueue/select)
         self.poller = poll()
@@ -289,6 +293,11 @@ class MultiChannelPoller(object):
 
     def _unregister_sock(self, sock):
         try:
+            # We need to remove unregistered, and therefore dead file
+            # descriptors from the `_fd_to_chan` dictionary. This is necessary
+            # so that we don't try to register a reader with a closed file
+            # descriptor in the event loop. This has caused exceptions in the
+            # past which crash celery.
             fd = self._sock_to_fd.pop(sock)
             del self._fd_to_chan[fd]
         finally:
@@ -738,6 +747,11 @@ class Channel(virtual.Channel):
                 # if there's a ConnectionError, disconnect so the next
                 # iteration will reconnect automatically.
                 try:
+                    # We need to wrap this in a try because the disconnect
+                    # process will raise a connection error. We don't care that
+                    # there was a connection error, we know. That's why we're
+                    # disconnecting the client, so we can try connecting
+                    # again!! AGH!
                     self.client.connection.disconnect()
                 except self.connection_errors:
                     pass
