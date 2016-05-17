@@ -10,7 +10,7 @@ if sys.version_info < (2, 7):  # pragma: no cover
 
 from collections import namedtuple  # noqa
 
-VERSION = version_info_t(3, 0, 35, 2, '')
+VERSION = version_info_t(3, 0, 35, 1, '')
 __version__ = '{0.major}.{0.minor}.{0.micro}{0.releaselevel}'.format(VERSION)
 __author__ = 'Ask Solem'
 __contact__ = 'ask@celeryproject.org'
