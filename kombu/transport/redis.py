@@ -1074,14 +1074,14 @@ class Transport(virtual.Transport):
                 for fd in cycle.fds:
                     try:
                         add_reader(fd, on_readable, fd)
-                    except IOError, e:
+                    except IOError as e:
                         # If we get an IOError where the errno is 9, that means
                         # we tried to register a closed file descriptor with
                         # the poller. This is a result of a race condition.
                         # Skip the bad fd and try the other ones. The next
                         # cycle will detect the dead fd and clear it out.
                         if getattr(e, 'errno') != 9:
-                            raise
+                            raise e
                     except redis.exceptions.ConnectionError:
                         # Catch any redis ConnectionErrors. It was most likely
                         # caused by the `_on_disconnect_connect` handler, which
