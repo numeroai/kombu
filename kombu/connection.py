@@ -68,11 +68,6 @@ class Connection(object):
         SSL currently only works with the py-amqp, amqplib, and qpid
         transports.  For other transports you can use stunnel.
 
-    :keyword hostname: Default host name/address if not provided in the URL.
-    :keyword userid: Default user name if not provided in the URL.
-    :keyword password: Default password if not provided in the URL.
-    :keyword virtual_host: Default virtual host if not provided in the URL.
-    :keyword port: Default port if not provided in the URL.
     :keyword ssl: Use SSL to connect to the server. Default is ``False``.
       May not be supported by the specified transport.
     :keyword transport: Default transport if not specified in the URL.
@@ -97,6 +92,19 @@ class Connection(object):
         and always remember to close the connection::
 
             >>> conn.release()
+
+    *Legacy options*
+
+    These options have been replaced by the URL argument, but are still
+    supported for backwards compatibility:
+
+    :keyword hostname: Host name/address.
+        NOTE: You cannot specify both the URL argument and use the hostname
+        keyword argument at the same time.
+    :keyword userid: Default user name if not provided in the URL.
+    :keyword password: Default password if not provided in the URL.
+    :keyword virtual_host: Default virtual host if not provided in the URL.
+    :keyword port: Default port if not provided in the URL.
 
     """
     port = None
@@ -127,8 +135,12 @@ class Connection(object):
     #: constantly yielding new URLs to try.
     failover_strategy = 'round-robin'
 
+    #: Map of failover strategy name to Callable
+    failover_strategies = failover_strategies
+
     #: Heartbeat value, currently only supported by the py-amqp transport.
     heartbeat = None
+
 
     hostname = userid = password = ssl = login_method = None
 
@@ -172,8 +184,9 @@ class Connection(object):
 
         # fallback hosts
         self.alt = alt
-        self.failover_strategy = failover_strategies.get(
-            failover_strategy or 'round-robin') or failover_strategy
+        self._failover_strategy_arg = failover_strategy or 'round-robin'
+        self.failover_strategy = self.failover_strategies.get(
+            self._failover_strategy_arg) or failover_strategy
         if self.alt:
             self.cycle = self.failover_strategy(self.alt)
             next(self.cycle)  # skip first entry
@@ -552,6 +565,7 @@ class Connection(object):
             ('login_method', self.login_method or D.get('login_method')),
             ('uri_prefix', self.uri_prefix),
             ('heartbeat', self.heartbeat),
+            ('failover_strategy', self._failover_strategy_arg),
             ('alternates', self.alt),
         )
         return info

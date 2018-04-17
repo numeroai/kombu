@@ -11,11 +11,11 @@ version_info_t = namedtuple(
     'version_info_t', ('major', 'minor', 'micro', 'releaselevel', 'serial'),
 )
 
-VERSION = version_info_t(3, 0, 35, 2, '')
+VERSION = version_info_t(3, 0, 37, 1, '')
 __version__ = '{0.major}.{0.minor}.{0.micro}{0.releaselevel}'.format(VERSION)
 __author__ = 'Ask Solem'
 __contact__ = 'ask@celeryproject.org'
-__homepage__ = 'http://kombu.readthedocs.org'
+__homepage__ = 'https://kombu.readthedocs.io'
 __docformat__ = 'restructuredtext en'
 
 # -eof meta-
