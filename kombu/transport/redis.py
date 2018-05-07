@@ -310,6 +310,12 @@ class MultiChannelPoller(object):
         except (AttributeError, TypeError, KeyError):
             pass
 
+    def _client_registered(self, channel, client, cmd):
+        if getattr(client, 'connection', None) is None:
+            client.connection = client.connection_pool.get_connection('_')
+        return (client.connection._sock is not None and
+                (channel, client, cmd) in self._chan_to_sock)
+
     def _register_BRPOP(self, channel):
         """Enable BRPOP mode for channel."""
         ident = channel, channel.client, 'BRPOP'
