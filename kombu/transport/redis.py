@@ -1104,7 +1104,13 @@ class Transport(virtual.Transport):
 
     def on_readable(self, fileno):
         """Handle AIO event for one of our file descriptors."""
-        self.cycle.on_readable(fileno)
+        try:
+            self.cycle.on_readable(fileno)
+        except Empty:
+            # This `on_readable` method used to return None when the file
+            # descriptor could not be found. Now there's a chance it'll raise
+            # the Empty exception. Catch Empty and continue on.
+            pass
 
     def _get_errors(self):
         """Utility to import redis-py's exceptions at runtime."""
