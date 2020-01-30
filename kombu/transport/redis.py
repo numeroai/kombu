@@ -256,6 +256,12 @@ class MultiChannelPoller(object):
         self._fd_to_chan = {}
         # channel -> socket map
         self._chan_to_sock = {}
+        # socket -> file descriptor map
+        # we need to keep track of socket to file descriptor mapping in order
+        # to remove dead file descriptors from the `_fd_to_chan` map. We can't
+        # just ask the socket what its file descriptor was, because it is most
+        # likely closed.
+        self._sock_to_fd = {}
         # poll implementation (epoll/kqueue/select)
         self.poller = poll()
         # one-shot callbacks called after reading from socket.
@@ -269,6 +275,7 @@ class MultiChannelPoller(object):
                 pass
         self._channels.clear()
         self._fd_to_chan.clear()
+        self._sock_to_fd.clear()
         self._chan_to_sock.clear()
 
     def add(self, channel):
@@ -279,8 +286,8 @@ class MultiChannelPoller(object):
 
     def _on_connection_disconnect(self, connection):
         try:
-            self.poller.unregister(connection._sock)
-        except (AttributeError, TypeError):
+            self._unregister_sock(connection._sock)
+        except (AttributeError, TypeError, KeyError):
             pass
 
     def _register(self, channel, client, type):
@@ -289,12 +296,30 @@ class MultiChannelPoller(object):
         if client.connection._sock is None:   # not connected yet.
             client.connection.connect()
         sock = client.connection._sock
-        self._fd_to_chan[sock.fileno()] = (channel, type)
+        fileno = sock.fileno()
+        self._sock_to_fd[sock] = fileno
+        self._fd_to_chan[fileno] = (channel, type)
         self._chan_to_sock[(channel, client, type)] = sock
         self.poller.register(sock, self.eventflags)
 
+    def _unregister_sock(self, sock):
+        try:
+            # We need to remove unregistered, and therefore dead file
+            # descriptors from the `_fd_to_chan` dictionary. This is necessary
+            # so that we don't try to register a reader with a closed file
+            # descriptor in the event loop. This has caused exceptions in the
+            # past which crash celery.
+            fd = self._sock_to_fd.pop(sock)
+            del self._fd_to_chan[fd]
+        finally:
+            self.poller.unregister(sock)
+
     def _unregister(self, channel, client, type):
-        self.poller.unregister(self._chan_to_sock[(channel, client, type)])
+        try:
+            self._unregister_sock(
+                self._chan_to_sock[(channel, client, type)])
+        except (AttributeError, TypeError, KeyError):
+            pass
 
     def _client_registered(self, channel, client, cmd):
         if getattr(client, 'connection', None) is None:
