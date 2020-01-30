@@ -368,7 +368,13 @@ class MultiChannelPoller(object):
                 )
 
     def on_readable(self, fileno):
-        chan, type = self._fd_to_chan[fileno]
+        try:
+            chan, type = self._fd_to_chan[fileno]
+        except KeyError:
+            # This was caused by a disconnect for another event wiping out all
+            # other connections. raise Empty so event loop can try again on the
+            # next poll.
+            raise Empty()
         if chan.qos.can_consume():
             chan.handlers[type]()
 
